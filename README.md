@@ -6,3 +6,7 @@ Projeto de compilador para materia Logica Computacional
 
 How the server will run your program:
 $ kotlinc -script main.kts [arguments]
+
+Para lancar tags:
+$ git tag v0.1.0
+$ git push origin v0.1.1

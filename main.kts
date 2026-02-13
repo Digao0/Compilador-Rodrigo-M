@@ -23,10 +23,9 @@ while (cont < equacao.length){
 
     if (char.isDigit()){
 
-        while (char.isDigit() == true){
-            char = equacao[cont]
-            numero += char 
-            cont++   
+        while (cont < equacao.length && equacao[cont].isDigit()) {
+            numero += equacao[cont]
+            cont++
         }
 
         nu.add(numero.toInt())

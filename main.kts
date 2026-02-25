@@ -1,56 +1,36 @@
+//imports
+
+
+//variaveis
 val equacao = args[0]
 var soma = 0
 var numero = ""
-
-
 var ops_validas = listOf('+', '-')
 var ops = mutableListOf<Char>()
 var nu = mutableListOf<Int>()
 
-if (equacao.isEmpty()) {
-    throw Exception("Entrada invalida") //checa string vazia
+class Token(val type: String, val Value: Any){
 }
 
-var cont = 0
-while (cont < equacao.length){
-    var char = equacao[cont]
+class Lexer(val source: String, val postion: Int = 0, val next: Token){
+    
+    fun selectNext() {
+        //lê o próximo token e atualiza o atributo next
+    } 
 
-    if (char.isDigit()){
+    
+}
 
-        while (cont < equacao.length && equacao[cont].isDigit()) {
-            numero += equacao[cont]
-            cont++
-        }
+class Parser(val lexer: Lexer){
 
-        nu.add(numero.toInt())
-        numero = ""
-    } else if (char in ops_validas){
-        if (nu.isEmpty()) {
-            throw Exception("Entrada invalida")
-        }
-        ops.add(char)
-        cont++
-    } else if (char == ' '){
-        cont++
-    } else {
-        throw Exception("Entrada invalida")
+    fun parseExpression(): Int {
+        //consome os tokens do Lexer e analisa se a sintaxe está aderente à gramática proposta. retorna o resultado numérico da expressão analisada.
+        //Ao final verificar se terminou de consumir toda a cadeia (o token deve ser EOF).
+    }
+
+    fun run(code: String): Int{
+        //recebe o código fonte como argumento, inicializa um objeto Lexer em lex, posiciona no primeiro token e retorna o resultado do
     }
 
 }
-
-if (nu.size != ops.size + 1){
-    throw Exception("Entrada invalida") //checa se tem numero a mais ou operador a mais
-}
-
-soma = nu[0]
-for (i in ops.indices){
-    if (ops[i] == '+'){
-        soma += nu[i + 1]
-    } else if (ops[i] == '-'){
-        soma -= nu[i + 1]
-    }
-}
-
-println(soma)
-
 

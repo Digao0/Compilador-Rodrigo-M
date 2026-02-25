@@ -4,6 +4,9 @@
 
 Projeto de compilador para materia Logica Computacional
 
+Diagrama Sintático atual : 
+![image](imgs/image.png)
+
 How the server will run your program:
 $ kotlinc -script main.kts [arguments]
 

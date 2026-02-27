@@ -5,6 +5,9 @@
 //var ops_validas = listOf('+', '-')
 //var ops = mutableListOf<Char>()
 //var nu = mutableListOf<Int>()
+if (equacao.isEmpty()) {
+    throw Exception("[Lexer] Entrada vazia") //checa string vazia
+}
 val equacao = args[0]
 
 fun checa_num(type: String){
@@ -105,9 +108,6 @@ class Parser(val lexer: Lexer){
 
 }
 
-if (equacao.isEmpty()) {
-    throw Exception("[Parser] Entrada vazia") //checa string vazia
-}
 
 var lex = Lexer(equacao)
 var pars = Parser(lex)

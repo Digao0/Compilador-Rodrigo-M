@@ -3,13 +3,13 @@
 //variaveis
 val equacao = args[0]
 var soma = 0
-var result: Int? = null
-var numero = ""
+
+
 var ops_validas = listOf('+', '-')
 var ops = mutableListOf<Char>()
 var nu = mutableListOf<Int>()
 
-fun checa_num(val type: String){
+fun checa_num(type: String){
     if (type != "INT"){
         throw Exception("Entrada invalida - esperado numero")
     }    
@@ -18,36 +18,37 @@ fun checa_num(val type: String){
 class Token(val type: String, val Value: Any){ //tipos validos: INT, PLUS, MINUS, EOF ex: (PLUS, '+')
 }
 
-class Lexer(val source: String, var position: Int = 0, var next: Token? = null){
+class Lexer(val source: String, var position: Int = 0, var next: Token? = null){ //para iniciar o token como nulo ? = null
     
     fun selectNext() {
+        var numero = ""
         //lê o próximo token e atualiza o atributo next
-        if (position > source.length){
-            throw Exception("Entrada invalida - char out of bounds")
+        while (position < source.length && source[position] == ' '){
+            position++
+        }
+        if (position == source.length){
+            next = Token("EOF","")
+            return 
         }
         var char = source[position]
-        while (char == ' ' && position < source.length){
-            position++
-            char = source[position]
-        }
-
-        if (position == source.length){
-            next = Token("EOF","") 
-        } else if (char == '+'){
-            next = Token("PLUS", '+')  
+        
+        if (char == '+'){
+            next = Token("PLUS", '+')
+            position++  
         } else if (char == '-'){
-            next = Token("MINUS", '-') 
+            next = Token("MINUS", '-')
+            position++ 
         } else if (char.isDigit()){
                 numero += char
                 position++
                 //char = source[position]
-            while (char.isDigit()){
-                numero += char
+            while (source[position].isDigit() && position < source.length){
+                numero += source[position]
                 position++
                 //char = source[position]
             }
             next = Token("INT",numero.toInt())
-            numero = ""
+            //numero = ""
         } else {
             throw Exception("Entrada invalida - char fora do alfabeto")
         }
@@ -61,37 +62,44 @@ class Parser(val lexer: Lexer){
 
     fun parseExpression(): Int {
         //consome os tokens do Lexer e analisa se a sintaxe está aderente à gramática proposta. retorna o resultado numérico da expressão analisada.
-        while (lexer.next.type != "EOF"){
-            checa_num(lexer.next.type)
-            result = lexer.next.Value
+        //var result: Int
+        var result = 0
+        
+        val first = lexer.next ?: throw Exception("Primeiro token nulo") //cur -> token atual
+        checa_num(first.type)
+        result = first.Value as Int
+        lexer.selectNext()
+
+        //if (cur.type == "INT"){throw Exception("numero seguido de numero")}
+
+        while (true){
+            val cur = lexer.next ?: throw Exception("operacao esperada nula") //cur -> token atual 
+            
+            if (cur.type != "PLUS" && cur.type != "MINUS") {break}
+            var op = cur.type
             lexer.selectNext()
-            while (lexer.next.type == "PLUS" || lexer.next.type == "MINUS") {
-                var op = lexer.next.type
-                lexer.selectNext()
-                checa_num(lexer.next.type)
-                var num = lexer.next.Value
-                if (lexer.next.type != "INT"){
-                    throw Exception("Entrada invalida - numero nao sucede operacao")
-                }
-                if (op == "PLUS"){
-                    result += num
-                } else {result -= num}
-                lexer.selectNext() 
-            }
+
+            var prox = lexer.next ?: throw Exception("Unexpected EOF")
+            checa_num(prox.type)
+            var num = prox.Value as Int 
+
+            if (op == "PLUS"){
+                result += num
+            } else {result -= num}
+
+            lexer.selectNext() //apos somar/sub procura o proximo operador
+
         }
-        if (result != null){
-            return result
-        } else {throw Exception("Entrada invalida - resultado nao calculado")}
-
-
+    
+        return result
     }
 
-    fun run(val code: String): Int{
+    fun run(code: String): Int{
         //recebe o código fonte como argumento, inicializa um objeto Lexer em lex, posiciona no primeiro token e retorna o resultado do parseExpression(). 
         //Ao final verificar se terminou de consumir toda a cadeia (o token deve ser EOF).
         lexer.selectNext()
         val somaFinal = parseExpression()
-        if (lexer.next.type != "EOF"){
+        if (lexer.next!!.type != "EOF"){
             throw Exception("Entrada invalida - Nao termina em EOF")
         }
         return somaFinal

@@ -13,7 +13,7 @@ fun checa_num(type: String){
     }    
 }
 
-class Token(val type: String, val Value: Any){ //tipos validos: INT, PLUS, MINUS, EOF ex: (PLUS, '+')
+class Token(val type: String, val Value: Any){ //tipos validos: XOR, INT, PLUS, MINUS, EOF ex: (PLUS, '+')
 }
 
 class Lexer(val source: String, var position: Int = 0, var next: Token? = null){ //para iniciar o token como nulo ? = null
@@ -36,7 +36,10 @@ class Lexer(val source: String, var position: Int = 0, var next: Token? = null){
         } else if (char == '-'){
             next = Token("MINUS", '-')
             position++ 
-        } else if (char.isDigit()){
+        } else if (char == '^' ){  
+            next = Token("XOR", '^')
+            position++
+        }else if (char.isDigit()){
                 numero += char
                 position++
                 //char = source[position]
@@ -73,7 +76,7 @@ class Parser(val lexer: Lexer){
         while (true){
             val cur = lexer.next ?: throw Exception("[Parser] operacao esperada nula") //cur -> token atual 
             
-            if (cur.type != "PLUS" && cur.type != "MINUS") {break}
+            if (cur.type != "PLUS" && cur.type != "MINUS" && cur.type != "XOR") {break}
             var op = cur.type
             lexer.selectNext()
 
@@ -83,7 +86,9 @@ class Parser(val lexer: Lexer){
 
             if (op == "PLUS"){
                 result += num
-            } else {result -= num}
+            } else if (op == "MINUS"){
+                result -= num
+            } else {result = result xor num}
 
             lexer.selectNext() //apos somar/sub procura o proximo operador
 

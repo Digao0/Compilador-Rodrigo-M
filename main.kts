@@ -1,7 +1,11 @@
 //imports
 
 //variaveis
-val equacao = readLine() ?: ""
+//var soma = 0
+//var ops_validas = listOf('+', '-')
+//var ops = mutableListOf<Char>()
+//var nu = mutableListOf<Int>()
+val equacao = args[0]
 
 fun checa_num(type: String){
     if (type != "INT"){

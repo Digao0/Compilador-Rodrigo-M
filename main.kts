@@ -1,15 +1,11 @@
 //imports
 
 //variaveis
-//var soma = 0
-//var ops_validas = listOf('+', '-')
-//var ops = mutableListOf<Char>()
-//var nu = mutableListOf<Int>()
-val equacao = args[0]
+val equacao = readLine() ?: ""
 
 fun checa_num(type: String){
     if (type != "INT"){
-        throw Exception("Entrada invalida - esperado numero")
+        throw Exception("[Semantic] Entrada invalida - esperado numero")
     }    
 }
 

@@ -5,9 +5,10 @@
 //var ops_validas = listOf('+', '-')
 //var ops = mutableListOf<Char>()
 //var nu = mutableListOf<Int>()
-if (equacao.isEmpty()) {
-    throw Exception("[Lexer] Entrada vazia") //checa string vazia
+if (args.isEmpty()) {
+    throw Exception("[Lexer] Entrada vazia")
 }
+
 val equacao = args[0]
 
 fun checa_num(type: String){

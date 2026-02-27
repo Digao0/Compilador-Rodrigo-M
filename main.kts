@@ -1,13 +1,11 @@
 //imports
 
 //variaveis
+//var soma = 0
+//var ops_validas = listOf('+', '-')
+//var ops = mutableListOf<Char>()
+//var nu = mutableListOf<Int>()
 val equacao = args[0]
-var soma = 0
-
-
-var ops_validas = listOf('+', '-')
-var ops = mutableListOf<Char>()
-var nu = mutableListOf<Int>()
 
 fun checa_num(type: String){
     if (type != "INT"){
@@ -50,7 +48,7 @@ class Lexer(val source: String, var position: Int = 0, var next: Token? = null){
             next = Token("INT",numero.toInt())
             //numero = ""
         } else {
-            throw Exception("Entrada invalida - char fora do alfabeto")
+            throw Exception("[Lexer] Entrada invalida - char fora do alfabeto")
         }
 
     } 
@@ -65,7 +63,7 @@ class Parser(val lexer: Lexer){
         //var result: Int
         var result = 0
         
-        val first = lexer.next ?: throw Exception("Primeiro token nulo") //cur -> token atual
+        val first = lexer.next ?: throw Exception("[Parser] Primeiro token nulo") //cur -> token atual
         checa_num(first.type)
         result = first.Value as Int
         lexer.selectNext()
@@ -73,13 +71,13 @@ class Parser(val lexer: Lexer){
         //if (cur.type == "INT"){throw Exception("numero seguido de numero")}
 
         while (true){
-            val cur = lexer.next ?: throw Exception("operacao esperada nula") //cur -> token atual 
+            val cur = lexer.next ?: throw Exception("[Parser] operacao esperada nula") //cur -> token atual 
             
             if (cur.type != "PLUS" && cur.type != "MINUS") {break}
             var op = cur.type
             lexer.selectNext()
 
-            var prox = lexer.next ?: throw Exception("Unexpected EOF")
+            var prox = lexer.next ?: throw Exception("[Parser] Unexpected EOF")
             checa_num(prox.type)
             var num = prox.Value as Int 
 
@@ -100,7 +98,7 @@ class Parser(val lexer: Lexer){
         lexer.selectNext()
         val somaFinal = parseExpression()
         if (lexer.next!!.type != "EOF"){
-            throw Exception("Entrada invalida - Nao termina em EOF")
+            throw Exception("[Parser] Entrada invalida - Nao termina em EOF")
         }
         return somaFinal
     }
@@ -108,7 +106,7 @@ class Parser(val lexer: Lexer){
 }
 
 if (equacao.isEmpty()) {
-    throw Exception("Entrada vazia") //checa string vazia
+    throw Exception("[Semantic] Entrada vazia") //checa string vazia
 }
 
 var lex = Lexer(equacao)

@@ -116,6 +116,7 @@ fun main(args: Array<String>) {
 
     val lex = Lexer(equacao)
     val pars = Parser(lex)
-    pars.run(equacao)
+    val result = pars.run(equacao)
+    println(result)
 }
 

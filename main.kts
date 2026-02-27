@@ -1,13 +1,19 @@
 //imports
 
-
 //variaveis
 val equacao = args[0]
 var soma = 0
+var result: Int? = null
 var numero = ""
 var ops_validas = listOf('+', '-')
 var ops = mutableListOf<Char>()
 var nu = mutableListOf<Int>()
+
+fun checa_num(val type: String){
+    if (type != "INT"){
+        throw Exception("Entrada invalida - esperado numero")
+    }    
+}
 
 class Token(val type: String, val Value: Any){ //tipos validos: INT, PLUS, MINUS, EOF ex: (PLUS, '+')
 }
@@ -16,11 +22,11 @@ class Lexer(val source: String, var position: Int = 0, var next: Token? = null){
     
     fun selectNext() {
         //lê o próximo token e atualiza o atributo next
-        if (postion > source.length){
+        if (position > source.length){
             throw Exception("Entrada invalida - char out of bounds")
         }
         var char = source[position]
-        while (char == '' && position <= source.length){
+        while (char == ' ' && position < source.length){
             position++
             char = source[position]
         }
@@ -56,14 +62,13 @@ class Parser(val lexer: Lexer){
     fun parseExpression(): Int {
         //consome os tokens do Lexer e analisa se a sintaxe está aderente à gramática proposta. retorna o resultado numérico da expressão analisada.
         while (lexer.next.type != "EOF"){
-            if (lexer.next.type != "INT"){
-                throw Exception("Entrada invalida - nao inicia em numero")
-            }
-            var result = lexer.next.Value
+            checa_num(lexer.next.type)
+            result = lexer.next.Value
             lexer.selectNext()
             while (lexer.next.type == "PLUS" || lexer.next.type == "MINUS") {
                 var op = lexer.next.type
                 lexer.selectNext()
+                checa_num(lexer.next.type)
                 var num = lexer.next.Value
                 if (lexer.next.type != "INT"){
                     throw Exception("Entrada invalida - numero nao sucede operacao")
@@ -74,7 +79,9 @@ class Parser(val lexer: Lexer){
                 lexer.selectNext() 
             }
         }
-        return result
+        if (result != null){
+            return result
+        } else {throw Exception("Entrada invalida - resultado nao calculado")}
 
 
     }

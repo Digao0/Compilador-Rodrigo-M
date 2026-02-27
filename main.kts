@@ -40,7 +40,7 @@ class Lexer(val source: String, var position: Int = 0, var next: Token? = null){
                 numero += char
                 position++
                 //char = source[position]
-            while (source[position].isDigit() && position < source.length){
+            while (position < source.length && source[position].isDigit()){
                 numero += source[position]
                 position++
                 //char = source[position]
@@ -106,7 +106,7 @@ class Parser(val lexer: Lexer){
 }
 
 if (equacao.isEmpty()) {
-    throw Exception("[Semantic] Entrada vazia") //checa string vazia
+    throw Exception("[Parser] Entrada vazia") //checa string vazia
 }
 
 var lex = Lexer(equacao)

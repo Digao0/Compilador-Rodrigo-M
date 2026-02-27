@@ -9,7 +9,7 @@ val equacao = args[0]
 
 fun checa_num(type: String){
     if (type != "INT"){
-        throw Exception("[Semantic] Entrada invalida - esperado numero")
+        throw Exception("[Parser] Entrada invalida - esperado numero")
     }    
 }
 

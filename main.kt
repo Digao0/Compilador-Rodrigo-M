@@ -1,11 +1,5 @@
 //imports
 
-//variaveis
-//var soma = 0
-//var ops_validas = listOf('+', '-')
-//var ops = mutableListOf<Char>()
-//var nu = mutableListOf<Int>()
-
 
 fun checa_num(type: String){
     if (type != "INT"){
@@ -13,7 +7,7 @@ fun checa_num(type: String){
     }    
 }
 
-class Token(val type: String, val Value: Any){ //tipos validos: XOR, INT, PLUS, MINUS, EOF ex: (PLUS, '+')
+class Token(val type: String, val Value: Any){ //tipos validos: MULT, DIV, OPEN_PAR, CLOSE_PAR, XOR, INT, PLUS, MINUS, EOF ex: (PLUS, '+')
 }
 
 class Lexer(val source: String, var position: Int = 0, var next: Token? = null){ //para iniciar o token como nulo ? = null
@@ -32,13 +26,32 @@ class Lexer(val source: String, var position: Int = 0, var next: Token? = null){
         
         if (char == '+'){
             next = Token("PLUS", '+')
-            position++  
+            position++ 
+
         } else if (char == '-'){
             next = Token("MINUS", '-')
             position++ 
+
+        } else if (char == '*'){
+            next = Token("MULT",'*')
+            position++
+
+        } else if (char == '/'){
+            next = Token("DIV",'/')
+            position++
+
+        } else if (char == '('){
+            next = Token("OPEN_PAR",'(')
+            position++
+
+        } else if (char == ')'){
+            next = Token("CLOSE_PAR",')')
+            position++
+
         } else if (char == '^' ){  
             next = Token("XOR", '^')
             position++
+            
         }else if (char.isDigit()){
                 numero += char
                 position++
@@ -62,39 +75,89 @@ class Lexer(val source: String, var position: Int = 0, var next: Token? = null){
 class Parser(val lexer: Lexer){
 
     fun parseExpression(): Int {
-        //consome os tokens do Lexer e analisa se a sintaxe está aderente à gramática proposta. retorna o resultado numérico da expressão analisada.
-        //var result: Int
-        var result = 0
-        
-        val first = lexer.next ?: throw Exception("[Parser] Primeiro token nulo") //cur -> token atual
-        checa_num(first.type)
-        result = first.Value as Int
-        lexer.selectNext()
 
-        //if (cur.type == "INT"){throw Exception("numero seguido de numero")}
+        var result = parseTerm()
 
         while (true){
             val cur = lexer.next ?: throw Exception("[Parser] operacao esperada nula") //cur -> token atual 
             
             if (cur.type != "PLUS" && cur.type != "MINUS" && cur.type != "XOR") {break}
+
             var op = cur.type
             lexer.selectNext()
 
-            var prox = lexer.next ?: throw Exception("[Parser] Unexpected EOF")
-            checa_num(prox.type)
-            var num = prox.Value as Int 
+            var num = parseTerm() 
 
             if (op == "PLUS"){
                 result += num
             } else if (op == "MINUS"){
                 result -= num
-            } else {result = result xor num}
-
-            lexer.selectNext() //apos somar/sub procura o proximo operador
-
+            } else {
+                result = result xor num
+            }
         }
     
-        return result
+        return result        
+
+    }
+
+    fun parseTerm(): Int{
+
+        var result = parseFactor()
+
+        while (true){
+            val cur = lexer.next ?: throw Exception("[Parser] operacao esperada nula") //cur -> token atual 
+            
+            if (cur.type != "MULT" && cur.type != "DIV") {break}
+
+            var op = cur.type
+            lexer.selectNext()
+
+            var num = parseFactor() 
+
+            if (op == "MULT"){
+                result = result * num
+            } else {
+                result = result / num
+            } 
+        }
+    
+        return result        
+
+    }
+
+    fun parseFactor(): Int{
+
+        val factor = lexer.next ?: throw Exception("[Parser] token no factor nulo") 
+
+        if (factor.type == "INT"){
+            lexer.selectNext()
+            val num = factor.Value as Int
+            return num
+
+        } else if (factor.type == "PLUS"){
+            lexer.selectNext()
+            return parseFactor()
+
+        } else if (factor.type == "MINUS"){
+            lexer.selectNext()
+            return parseFactor() * -1
+
+        } else if (factor.type == "OPEN_PAR"){
+            lexer.selectNext()
+            val exp = parseExpression()
+
+            val current = lexer.next ?: throw Exception("[Parser] parentesis nao fechado")
+            if (current.type != "CLOSE_PAR"){
+                throw Exception("[Parser] Parentesis nao fechado")
+            }
+
+            lexer.selectNext()
+            return exp
+        } 
+
+        throw Exception("[Parser] Factor invalido")
+
     }
 
     fun run(code: String): Int{

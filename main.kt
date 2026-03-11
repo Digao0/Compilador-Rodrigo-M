@@ -35,7 +35,7 @@ class Lexer(val source: String, var position: Int = 0, var next: Token? = null){
         } else if (char == '*' && position + 1 < source.length && source[position + 1] == '*') {
             next = Token("POWER", "**")
             position += 2
-
+            
         } else if (char == '*'){
             next = Token("MULT",'*')
             position++
@@ -78,17 +78,6 @@ class Lexer(val source: String, var position: Int = 0, var next: Token? = null){
 
 class Parser(val lexer: Lexer){
 
-    fun intPow(base: Int, exp: Int): Int {
-        if (exp < 0) throw Exception("[Semantic] Expoente negativo nao suportado")
-
-        var result = 1
-        repeat(exp) {
-            result *= base
-        }
-        return result
-
-    }
-
     fun parseExpression(): Int {
 
         var result = parseTerm()
@@ -118,7 +107,7 @@ class Parser(val lexer: Lexer){
 
     fun parseTerm(): Int{
 
-        var result = parseUnary()
+        var result = parseFactor()
 
         while (true){
             val cur = lexer.next ?: throw Exception("[Parser] operacao esperada nula") //cur -> token atual 
@@ -128,7 +117,7 @@ class Parser(val lexer: Lexer){
             var op = cur.type
             lexer.selectNext()
 
-            var num = parseUnary() 
+            var num = parseFactor() 
 
             if (op == "MULT"){
                 result = result * num
@@ -141,57 +130,37 @@ class Parser(val lexer: Lexer){
 
     }
 
-    fun parseUnary(): Int {
+    fun parseFactor(): Int{
 
-        val token = lexer.next ?: throw Exception("[Parser] token nulo em unary")
+        val factor = lexer.next ?: throw Exception("[Parser] token no factor nulo") 
 
-        if (token.type == "PLUS") {
+        if (factor.type == "INT"){
             lexer.selectNext()
-            return parseUnary()
-        }
+            val num = factor.Value as Int
+            return num
 
-        if (token.type == "MINUS") {
+        } else if (factor.type == "PLUS"){
             lexer.selectNext()
-            return -parseUnary()
-        }
+            return parseFactor()
 
-        return parsePower()
-    }
-
-    fun parsePower(): Int {
-
-        val token = lexer.next ?: throw Exception("[Parser] token nulo em power")
-
-        var base: Int
-
-        if (token.type == "INT") {
+        } else if (factor.type == "MINUS"){
             lexer.selectNext()
-            base = token.Value as Int
+            return parseFactor() * -1
 
-        } else if (token.type == "OPEN_PAR") {
+        } else if (factor.type == "OPEN_PAR"){
             lexer.selectNext()
-            base = parseExpression()
+            val exp = parseExpression()
 
             val current = lexer.next ?: throw Exception("[Parser] parentesis nao fechado")
-            if (current.type != "CLOSE_PAR") {
-                throw Exception("[Parser] parentesis nao fechado")
+            if (current.type != "CLOSE_PAR"){
+                throw Exception("[Parser] Parentesis nao fechado")
             }
 
             lexer.selectNext()
+            return exp
+        } 
 
-        } else {
-            throw Exception("[Parser] fator invalido")
-        }
-
-        // lidando com potencia
-        val nextToken = lexer.next
-        if (nextToken != null && nextToken.type == "POWER") {
-            lexer.selectNext()
-            val exponent = parsePower()
-            base = intPow(base, exponent)
-        }
-
-        return base
+        throw Exception("[Parser] Factor invalido")
 
     }
 
@@ -222,4 +191,3 @@ fun main(args: Array<String>) {
     val result = pars.run(equacao)
     println(result)
 }
-

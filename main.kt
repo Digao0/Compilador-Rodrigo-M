@@ -33,7 +33,9 @@ class BinOp(override val Value: Char, val left : Node, val right : Node) : Node{
         } else if (Value == '*') {
             return children[0].evaluate() * children[1].evaluate()
         } else if (Value == '/'){
-            return children[0].evaluate() / children[1].evaluate()
+            if (children[1].evaluate() != 0){
+                return children[0].evaluate() / children[1].evaluate()
+            } else {throw Exception("[Semantic] Divisao por 0")}
         } else {throw Exception("[Semantic] Entrada invalida - binop fora do alfabeto") }
     }
 }

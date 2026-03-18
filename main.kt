@@ -148,7 +148,7 @@ class Parser(val lexer: Lexer){
             }
         }
     
-        return result        
+        return resultNode        
 
     }
 
@@ -173,7 +173,7 @@ class Parser(val lexer: Lexer){
             } 
         }
     
-        return result        
+        return resultNode        
 
     }
 

@@ -140,9 +140,9 @@ class Parser(val lexer: Lexer){
             var numNode = parseTerm() 
 
             if (op == "PLUS"){
-                result = BinOp('+', resultNode, numNode)
+                resultNode = BinOp('+', resultNode, numNode)
             } else if (op == "MINUS"){
-                result = BinOp('-', resultNode, numNode)
+                resultNode = BinOp('-', resultNode, numNode)
             } else {
                 throw Exception("[Parser] operacao desconhecida")
             }
@@ -167,9 +167,9 @@ class Parser(val lexer: Lexer){
             var numNode = parseFactor() 
 
             if (op == "MULT"){
-                result = BinOp('*', resultNode, numNode)
+                resultNode = BinOp('*', resultNode, numNode)
             } else {
-                result = BinOp('/', resultNode, numNode)
+                resultNode = BinOp('/', resultNode, numNode)
             } 
         }
     

@@ -1,11 +1,58 @@
 //imports
-
-
+/* 
 fun checa_num(type: String){
     if (type != "INT"){
         throw Exception("[Parser] Entrada invalida - esperado numero")
     }    
 }
+*/
+
+interface Node{
+    val Value: Any
+    val children : List<Node>
+
+    fun evaluate(): Int 
+}
+
+class IntVal(override val Value: Int) : Node{
+    override val children: List<Node> = emptyList()
+
+    override fun evaluate(): Int {
+        return Value
+    }
+}
+
+class BinOp(override val Value: Char, val left : Node, val right : Node) : Node{
+    override val children: List<Node> = listOf(left, right)  
+
+    override fun evaluate(): Int {
+        if (Value == '+'){
+            return children[0].evaluate() + children[1].evaluate()
+        } else if (Value == '-') {
+            return children[0].evaluate() - children[1].evaluate()
+        } else if (Value == '*') {
+            return children[0].evaluate() * children[1].evaluate()
+        } else if (Value == '/'){
+            return children[0].evaluate() / children[1].evaluate()
+        } else {throw Exception("[Semantic] Entrada invalida - binop fora do alfabeto") }
+    }
+}
+
+class UnOp(override val Value: Char, val child: Node) : Node {
+    override val children: List<Node> = listOf(child)
+
+    override fun evaluate(): Int {
+        if (Value == '-'){
+            return -children[0].evaluate()
+        } else if (Value == '+') {
+            return children[0].evaluate()
+        } else {throw Exception("[Semantic] Entrada invalida - unop fora do alfabeto")}
+    }   
+}
+
+
+
+
 
 class Token(val type: String, val Value: Any){ //tipos validos: MULT, DIV, OPEN_PAR, CLOSE_PAR, XOR, INT, PLUS, MINUS, EOF ex: (PLUS, '+')
 }
@@ -78,9 +125,9 @@ class Lexer(val source: String, var position: Int = 0, var next: Token? = null){
 
 class Parser(val lexer: Lexer){
 
-    fun parseExpression(): Int {
+    fun parseExpression(): Node {
 
-        var result = parseTerm()
+        var resultNode = parseTerm()
 
         while (true){
             val cur = lexer.next ?: throw Exception("[Parser] operacao esperada nula") //cur -> token atual 
@@ -90,14 +137,14 @@ class Parser(val lexer: Lexer){
             var op = cur.type
             lexer.selectNext()
 
-            var num = parseTerm() 
+            var numNode = parseTerm() 
 
             if (op == "PLUS"){
-                result += num
+                result = BinOp('+', resultNode, numNode)
             } else if (op == "MINUS"){
-                result -= num
+                result = BinOp('-', resultNode, numNode)
             } else {
-                result = result xor num
+                throw Exception("[Parser] operacao desconhecida")
             }
         }
     
@@ -105,9 +152,9 @@ class Parser(val lexer: Lexer){
 
     }
 
-    fun parseTerm(): Int{
+    fun parseTerm(): Node{
 
-        var result = parseFactor()
+        var resultNode = parseFactor()
 
         while (true){
             val cur = lexer.next ?: throw Exception("[Parser] operacao esperada nula") //cur -> token atual 
@@ -117,12 +164,12 @@ class Parser(val lexer: Lexer){
             var op = cur.type
             lexer.selectNext()
 
-            var num = parseFactor() 
+            var numNode = parseFactor() 
 
             if (op == "MULT"){
-                result = result * num
+                result = BinOp('*', resultNode, numNode)
             } else {
-                result = result / num
+                result = BinOp('/', resultNode, numNode)
             } 
         }
     
@@ -130,22 +177,21 @@ class Parser(val lexer: Lexer){
 
     }
 
-    fun parseFactor(): Int{
+    fun parseFactor(): Node{
 
         val factor = lexer.next ?: throw Exception("[Parser] token no factor nulo") 
 
         if (factor.type == "INT"){
             lexer.selectNext()
-            val num = factor.Value as Int
-            return num
+            return IntVal(factor.Value as Int)
 
         } else if (factor.type == "PLUS"){
             lexer.selectNext()
-            return parseFactor()
+            return UnOp('+', parseFactor())
 
         } else if (factor.type == "MINUS"){
             lexer.selectNext()
-            return parseFactor() * -1
+            return UnOp('-', parseFactor())
 
         } else if (factor.type == "OPEN_PAR"){
             lexer.selectNext()
@@ -164,15 +210,15 @@ class Parser(val lexer: Lexer){
 
     }
 
-    fun run(code: String): Int{
+    fun run(code: String): Node{ //retorna toda a arvore
         //recebe o código fonte como argumento, inicializa um objeto Lexer em lex, posiciona no primeiro token e retorna o resultado do parseExpression(). 
         //Ao final verificar se terminou de consumir toda a cadeia (o token deve ser EOF).
         lexer.selectNext()
-        val somaFinal = parseExpression()
+        val tree = parseExpression()
         if (lexer.next!!.type != "EOF"){
             throw Exception("[Parser] Entrada invalida - Nao termina em EOF")
         }
-        return somaFinal
+        return tree
     }
 
 }
@@ -188,6 +234,6 @@ fun main(args: Array<String>) {
 
     val lex = Lexer(equacao)
     val pars = Parser(lex)
-    val result = pars.run(equacao)
-    println(result)
+    val root = pars.run(equacao)
+    println(root.evaluate())
 }

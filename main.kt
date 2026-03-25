@@ -1,241 +1,368 @@
-//imports
-/* 
-fun checa_num(type: String){
-    if (type != "INT"){
-        throw Exception("[Parser] Entrada invalida - esperado numero")
-    }    
-}
-*/
+import java.io.File
 
-interface Node{
+// ================= PREPRO =================
+class PrePro {
+    companion object {
+        fun filter(code: String): String {
+            val regex = Regex("--.*")
+            return code.lines().joinToString("\n") {
+                it.replace(regex, "")
+            }
+        }
+    }
+}
+
+// ================= SYMBOL TABLE =================
+class Variable(var value: Int)
+
+class SymbolTable {
+    private val table = mutableMapOf<String, Variable>()
+
+    fun set(name: String, value: Int) {
+        table[name] = Variable(value)
+    }
+
+    fun get(name: String): Int {
+        return table[name]?.value
+            ?: throw Exception("[Semantic] Variavel nao definida: $name")
+    }
+}
+
+// ================= AST =================
+interface Node {
     val Value: Any
-    val children : List<Node>
+    val children: List<Node>
 
-    fun evaluate(): Int 
+    fun evaluate(st: SymbolTable): Int?
 }
 
-class IntVal(override val Value: Int) : Node{
-    override val children: List<Node> = emptyList()
+class IntVal(override val Value: Int) : Node {
+    override val children = emptyList<Node>()
 
-    override fun evaluate(): Int {
+    override fun evaluate(st: SymbolTable): Int {
         return Value
     }
 }
 
-class BinOp(override val Value: Char, val left : Node, val right : Node) : Node{
-    override val children: List<Node> = listOf(left, right)  
+class BinOp(override val Value: Char, val left: Node, val right: Node) : Node {
+    override val children = listOf(left, right)
 
-    override fun evaluate(): Int {
-        if (Value == '+'){
-            return children[0].evaluate() + children[1].evaluate()
-        } else if (Value == '-') {
-            return children[0].evaluate() - children[1].evaluate()
-        } else if (Value == '*') {
-            return children[0].evaluate() * children[1].evaluate()
-        } else if (Value == '/'){
-            if (children[1].evaluate() != 0){
-                return children[0].evaluate() / children[1].evaluate()
-            } else {throw Exception("[Semantic] Divisao por 0")}
-        } else {throw Exception("[Semantic] Entrada invalida - binop fora do alfabeto") }
+    override fun evaluate(st: SymbolTable): Int {
+        val l = left.evaluate(st)!!
+        val r = right.evaluate(st)!!
+
+        return when (Value) {
+            '+' -> l + r
+            '-' -> l - r
+            '*' -> l * r
+            '/' -> {
+                if (r == 0) throw Exception("[Semantic] Divisao por 0")
+                l / r
+            }
+            else -> throw Exception("[Semantic] BinOp invalido")
+        }
     }
 }
 
 class UnOp(override val Value: Char, val child: Node) : Node {
-    override val children: List<Node> = listOf(child)
+    override val children = listOf(child)
 
-    override fun evaluate(): Int {
-        if (Value == '-'){
-            return -children[0].evaluate()
-        } else if (Value == '+') {
-            return children[0].evaluate()
-        } else {throw Exception("[Semantic] Entrada invalida - unop fora do alfabeto")}
-    }   
+    override fun evaluate(st: SymbolTable): Int {
+        val v = child.evaluate(st)!!
+        return if (Value == '-') -v else v
+    }
 }
 
+class Identifier(override val Value: String) : Node {
+    override val children = emptyList<Node>()
 
-
-
-
-class Token(val type: String, val Value: Any){ //tipos validos: MULT, DIV, OPEN_PAR, CLOSE_PAR, XOR, INT, PLUS, MINUS, EOF ex: (PLUS, '+')
+    override fun evaluate(st: SymbolTable): Int {
+        return st.get(Value)
+    }
 }
 
-class Lexer(val source: String, var position: Int = 0, var next: Token? = null){ //para iniciar o token como nulo ? = null
-    
+class Assignment(val id: Identifier, val expr: Node) : Node {
+    override val Value: Any = "="
+    override val children = listOf(id, expr)
+
+    override fun evaluate(st: SymbolTable): Int? {
+        val value = expr.evaluate(st)!!
+        st.set(id.Value, value)
+        return null
+    }
+}
+
+class Print(val expr: Node) : Node {
+    override val Value: Any = "print"
+    override val children = listOf(expr)
+
+    override fun evaluate(st: SymbolTable): Int? {
+        println(expr.evaluate(st))
+        return null
+    }
+}
+
+class Block(val statements: List<Node>) : Node {
+    override val Value: Any = "block"
+    override val children = statements
+
+    override fun evaluate(st: SymbolTable): Int? {
+        for (stmt in children) {
+            stmt.evaluate(st)
+        }
+        return null
+    }
+}
+
+class NoOp : Node {
+    override val Value: Any = ""
+    override val children = emptyList<Node>()
+
+    override fun evaluate(st: SymbolTable): Int? {
+        return null
+    }
+}
+
+// ================= TOKEN =================
+class Token(val type: String, val value: Any)
+
+// ================= LEXER =================
+class Lexer(val source: String, var position: Int = 0, var next: Token? = null) {
+
     fun selectNext() {
-        var numero = ""
-        //lê o próximo token e atualiza o atributo next
-        while (position < source.length && source[position] == ' '){
+        while (position < source.length && source[position] == ' ') {
             position++
         }
-        if (position == source.length){
-            next = Token("EOF","")
-            return 
+
+        if (position >= source.length) {
+            next = Token("EOF", "")
+            return
         }
-        var char = source[position]
-        
-        if (char == '+'){
-            next = Token("PLUS", '+')
-            position++ 
 
-        } else if (char == '-'){
-            next = Token("MINUS", '-')
-            position++ 
+        val char = source[position]
 
-        } else if (char == '*' && position + 1 < source.length && source[position + 1] == '*') {
-            next = Token("POWER", "**")
-            position += 2
-            
-        } else if (char == '*'){
-            next = Token("MULT",'*')
-            position++
-
-        } else if (char == '/'){
-            next = Token("DIV",'/')
-            position++
-
-        } else if (char == '('){
-            next = Token("OPEN_PAR",'(')
-            position++
-
-        } else if (char == ')'){
-            next = Token("CLOSE_PAR",')')
-            position++
-
-        } else if (char == '^' ){  
-            next = Token("XOR", '^')
-            position++
-            
-        }else if (char.isDigit()){
-                numero += char
-                position++
-                //char = source[position]
-            while (position < source.length && source[position].isDigit()){
-                numero += source[position]
-                position++
-                //char = source[position]
+        when {
+            char == '+' -> {
+                next = Token("PLUS", '+'); position++
             }
-            next = Token("INT",numero.toInt())
-            //numero = ""
-        } else {
-            throw Exception("[Lexer] Entrada invalida - char fora do alfabeto")
+            char == '-' -> {
+                next = Token("MINUS", '-'); position++
+            }
+            char == '*' -> {
+                next = Token("MULT", '*'); position++
+            }
+            char == '/' -> {
+                next = Token("DIV", '/'); position++
+            }
+            char == '(' -> {
+                next = Token("OPEN_PAR", '('); position++
+            }
+            char == ')' -> {
+                next = Token("CLOSE_PAR", ')'); position++
+            }
+            char == '=' -> {
+                next = Token("ASSIGN", '='); position++
+            }
+            char == '\n' -> {
+                next = Token("END", '\n'); position++
+            }
+            char.isDigit() -> {
+                var num = ""
+                while (position < source.length && source[position].isDigit()) {
+                    num += source[position]
+                    position++
+                }
+                next = Token("INT", num.toInt())
+            }
+            char.isLetter() -> {
+                var ident = ""
+                while (position < source.length &&
+                    (source[position].isLetterOrDigit() || source[position] == '_')) {
+                    ident += source[position]
+                    position++
+                }
+
+                if (ident == "print") {
+                    next = Token("PRINT", ident)
+                } else {
+                    next = Token("IDEN", ident)
+                }
+            }
+            else -> throw Exception("[Lexer] Caractere invalido: $char")
         }
-
-    } 
-
-    
+    }
 }
 
-class Parser(val lexer: Lexer){
+// ================= PARSER =================
+class Parser(val lexer: Lexer) {
+
+    fun parseProgram(): Node {
+        val statements = mutableListOf<Node>()
+
+        while (lexer.next!!.type != "EOF") {
+            statements.add(parseStatement())
+        }
+
+        return Block(statements)
+    }
+
+    fun parseStatement(): Node {
+        val cur = lexer.next!!
+
+        if (cur.type == "IDEN") {
+            val id = Identifier(cur.value as String)
+            lexer.selectNext()
+
+            if (lexer.next!!.type != "ASSIGN") {
+                throw Exception("[Parser] Esperado '='")
+            }
+
+            lexer.selectNext()
+            val expr = parseExpression()
+
+            if (lexer.next!!.type != "END") {
+                throw Exception("[Parser] Esperado fim de linha")
+            }
+
+            lexer.selectNext()
+            return Assignment(id, expr)
+        }
+
+        else if (cur.type == "PRINT") {
+            lexer.selectNext()
+
+            if (lexer.next!!.type != "OPEN_PAR") {
+                throw Exception("[Parser] Esperado '('")
+            }
+
+            lexer.selectNext()
+            val expr = parseExpression()
+
+            if (lexer.next!!.type != "CLOSE_PAR") {
+                throw Exception("[Parser] Esperado ')'")
+            }
+
+            lexer.selectNext()
+
+            if (lexer.next!!.type != "END") {
+                throw Exception("[Parser] Esperado fim de linha")
+            }
+
+            lexer.selectNext()
+
+            return Print(expr)
+        }
+
+        else if (cur.type == "END") {
+            lexer.selectNext()
+            return NoOp()
+        }
+
+        throw Exception("[Parser] Statement invalido")
+    }
 
     fun parseExpression(): Node {
+        var result = parseTerm()
 
-        var resultNode = parseTerm()
-
-        while (true){
-            val cur = lexer.next ?: throw Exception("[Parser] operacao esperada nula") //cur -> token atual 
-            
-            if (cur.type != "PLUS" && cur.type != "MINUS" && cur.type != "XOR") {break}
-
-            var op = cur.type
+        while (lexer.next!!.type == "PLUS" || lexer.next!!.type == "MINUS") {
+            val op = lexer.next!!
             lexer.selectNext()
 
-            var numNode = parseTerm() 
+            val right = parseTerm()
 
-            if (op == "PLUS"){
-                resultNode = BinOp('+', resultNode, numNode)
-            } else if (op == "MINUS"){
-                resultNode = BinOp('-', resultNode, numNode)
+            result = if (op.type == "PLUS") {
+                BinOp('+', result, right)
             } else {
-                throw Exception("[Parser] operacao desconhecida")
+                BinOp('-', result, right)
             }
         }
-    
-        return resultNode        
 
+        return result
     }
 
-    fun parseTerm(): Node{
+    fun parseTerm(): Node {
+        var result = parseFactor()
 
-        var resultNode = parseFactor()
-
-        while (true){
-            val cur = lexer.next ?: throw Exception("[Parser] operacao esperada nula") //cur -> token atual 
-            
-            if (cur.type != "MULT" && cur.type != "DIV") {break}
-
-            var op = cur.type
+        while (lexer.next!!.type == "MULT" || lexer.next!!.type == "DIV") {
+            val op = lexer.next!!
             lexer.selectNext()
 
-            var numNode = parseFactor() 
+            val right = parseFactor()
 
-            if (op == "MULT"){
-                resultNode = BinOp('*', resultNode, numNode)
+            result = if (op.type == "MULT") {
+                BinOp('*', result, right)
             } else {
-                resultNode = BinOp('/', resultNode, numNode)
-            } 
-        }
-    
-        return resultNode        
-
-    }
-
-    fun parseFactor(): Node{
-
-        val factor = lexer.next ?: throw Exception("[Parser] token no factor nulo") 
-
-        if (factor.type == "INT"){
-            lexer.selectNext()
-            return IntVal(factor.Value as Int)
-
-        } else if (factor.type == "PLUS"){
-            lexer.selectNext()
-            return UnOp('+', parseFactor())
-
-        } else if (factor.type == "MINUS"){
-            lexer.selectNext()
-            return UnOp('-', parseFactor())
-
-        } else if (factor.type == "OPEN_PAR"){
-            lexer.selectNext()
-            val exp = parseExpression()
-
-            val current = lexer.next ?: throw Exception("[Parser] parentesis nao fechado")
-            if (current.type != "CLOSE_PAR"){
-                throw Exception("[Parser] Parentesis nao fechado")
+                BinOp('/', result, right)
             }
+        }
 
-            lexer.selectNext()
-            return exp
-        } 
-
-        throw Exception("[Parser] Factor invalido")
-
+        return result
     }
 
-    fun run(code: String): Node{ //retorna toda a arvore
-        //recebe o código fonte como argumento, inicializa um objeto Lexer em lex, posiciona no primeiro token e retorna o resultado do parseExpression(). 
-        //Ao final verificar se terminou de consumir toda a cadeia (o token deve ser EOF).
+    fun parseFactor(): Node {
+        val token = lexer.next!!
+
+        return when (token.type) {
+            "INT" -> {
+                lexer.selectNext()
+                IntVal(token.value as Int)
+            }
+            "PLUS" -> {
+                lexer.selectNext()
+                UnOp('+', parseFactor())
+            }
+            "MINUS" -> {
+                lexer.selectNext()
+                UnOp('-', parseFactor())
+            }
+            "OPEN_PAR" -> {
+                lexer.selectNext()
+                val expr = parseExpression()
+
+                if (lexer.next!!.type != "CLOSE_PAR") {
+                    throw Exception("[Parser] Parentesis nao fechado")
+                }
+
+                lexer.selectNext()
+                expr
+            }
+            "IDEN" -> {
+                lexer.selectNext()
+                Identifier(token.value as String)
+            }
+            else -> throw Exception("[Parser] Factor invalido")
+        }
+    }
+
+    fun run(code: String): Node {
         lexer.selectNext()
-        val tree = parseExpression()
-        if (lexer.next!!.type != "EOF"){
-            throw Exception("[Parser] Entrada invalida - Nao termina em EOF")
+        val tree = parseProgram()
+
+        if (lexer.next!!.type != "EOF") {
+            throw Exception("[Parser] Nao terminou em EOF")
         }
+
         return tree
     }
-
 }
 
-
+// ================= MAIN =================
 fun main(args: Array<String>) {
 
     if (args.isEmpty()) {
-        throw Exception("[Lexer] Entrada vazia")
+        throw Exception("Arquivo nao fornecido")
     }
 
-    val equacao = args[0]
+    val filename = args[0]
+    val rawCode = File(filename).readText() + "\n"
 
-    val lex = Lexer(equacao)
-    val pars = Parser(lex)
-    val root = pars.run(equacao)
-    println(root.evaluate())
+    val code = PrePro.filter(rawCode)
+
+    val lexer = Lexer(code)
+    val parser = Parser(lexer)
+
+    val root = parser.run(code)
+
+    val st = SymbolTable()
+    root.evaluate(st)
 }

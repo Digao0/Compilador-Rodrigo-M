@@ -73,7 +73,7 @@ class Identifier(override val Value: String) : Node {
     }
 }
 
-class Print(override val Value: Any = "", val child: Node) : Node {
+class Print(val child: Node, override val Value: Any = "") : Node {
     override val children: List<Node> = listOf(child)
 
     override fun evaluate(st: ST) : Int?{
@@ -82,7 +82,7 @@ class Print(override val Value: Any = "", val child: Node) : Node {
     }
 }
 
-class Assignment(override val Value: Any = "", val left : Node, val right : Node) : Node {
+class Assignment(val left : Node, val right : Node, override val Value: Any = "") : Node {
     override val children: List<Node> = listOf(left, right)
 
     override fun evaluate(st: ST) : Int?{
@@ -93,7 +93,7 @@ class Assignment(override val Value: Any = "", val left : Node, val right : Node
     }
 }
 
-class Block(override val Value: Any = "", override val children: List<Node> = emptyList()) : Node {
+class Block(override val children: List<Node> = emptyList(), override val Value: Any = "") : Node {
 
     override fun evaluate(st: ST): Int?{
         for (child in children){

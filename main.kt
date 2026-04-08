@@ -33,16 +33,19 @@ class IntVal(override val Value: Int) : Node{
 class BinOp(override val Value: Char, val left : Node, val right : Node) : Node {
     override val children: List<Node> = listOf(left, right)  
 
-    override fun evaluate(st: ST): Int {
+    override fun evaluate(st: ST): Int {  
+        val left = children[0].evaluate(st) as Int
+        val right = children[1].evaluate(st) as Int
+
         if (Value == '+'){
-            return children[0].evaluate(st) + children[1].evaluate(st)
+            return left + right
         } else if (Value == '-') {
-            return children[0].evaluate(st) - children[1].evaluate(st)
+            return left - right
         } else if (Value == '*') {
-            return children[0].evaluate(st) * children[1].evaluate(st)
+            return left * right
         } else if (Value == '/'){
-            if (children[1].evaluate(st) != 0){
-                return children[0].evaluate(st) / children[1].evaluate(st)
+            if (right != 0){
+                return left / right
             } else {throw Exception("[Semantic] Divisao por 0")}
         } else {throw Exception("[Semantic] Entrada invalida - binop fora do alfabeto") }
     }
@@ -52,10 +55,12 @@ class UnOp(override val Value: Char, val child: Node) : Node {
     override val children: List<Node> = listOf(child)
 
     override fun evaluate(st: ST): Int {
+        val num = children[0].evaluate(st) as Int
+
         if (Value == '-'){
-            return -children[0].evaluate(st)
+            return -num
         } else if (Value == '+') {
-            return children[0].evaluate(st)
+            return num
         } else {throw Exception("[Semantic] Entrada invalida - unop fora do alfabeto")}
     }   
 }
@@ -68,34 +73,37 @@ class Identifier(override val Value: String) : Node {
     }
 }
 
-class Print(val child: Node) : Node {
+class Print(override val Value: Any = "", val child: Node) : Node {
     override val children: List<Node> = listOf(child)
 
-    override fun evaluate(st: ST){
+    override fun evaluate(st: ST) : Int?{
         println(child.evaluate(st))
+        return null
     }
 }
 
-class Assignment(val left : Node, val right : Node) : Node {
+class Assignment(override val Value: Any = "", val left : Node, val right : Node) : Node {
     override val children: List<Node> = listOf(left, right)
 
-    override fun evaluate(st: ST){
+    override fun evaluate(st: ST) : Int?{
         val nome = children[0].Value as String
         val valor = children[1].evaluate(st) as Int
         st.setter(nome,valor)
+        return null
     }
 }
 
-class Block(override val children: List<Node> = emptyList()) : Node {
+class Block(override val Value: Any = "", override val children: List<Node> = emptyList()) : Node {
 
-    override fun evaluate(st: ST){
-        for (child in instructions){
+    override fun evaluate(st: ST): Int?{
+        for (child in children){
             child.evaluate(st)
-      }   
+        } 
+        return null  
     }
 }
 
-class NoOp() : Node {
+class NoOp(override val Value: Any = "") : Node {
     override val children: List<Node> = emptyList()
 
     override fun evaluate(st: ST): Int? {

@@ -46,8 +46,20 @@ class BinOp(override val Value: Char, val left : Node, val right : Node) : Node 
         } else if (Value == '/'){
             if (right != 0){
                 return left / right
-            } else {throw Exception("[Semantic] Divisao por 0")}
-        } else {throw Exception("[Semantic] Entrada invalida - binop fora do alfabeto") }
+            } else {throw Exception("[Semantic] Divisao por 0")}        
+        } else if (Value == '<') {
+            return if (left < right) 1 else 0
+        } else if (Value == '>') {
+            return if (left > right) 1 else 0
+        } else if (Value == '=') { 
+            return if (left == right) 1 else 0
+        } else if (Value == '&') {
+            return if (left != 0 && right != 0) 1 else 0
+        } else if (Value == '|') {
+            return if (left != 0 || right != 0) 1 else 0
+        }
+        
+        else {throw Exception("[Semantic] Entrada invalida - binop fora do alfabeto") }
     }
 }
 
@@ -61,7 +73,10 @@ class UnOp(override val Value: Char, val child: Node) : Node {
             return -num
         } else if (Value == '+') {
             return num
-        } else {throw Exception("[Semantic] Entrada invalida - unop fora do alfabeto")}
+        } else if (Value == '!') {
+            return if (num == 0) 1 else 0
+        }
+        else {throw Exception("[Semantic] Entrada invalida - unop fora do alfabeto")}
     }   
 }
 
@@ -120,11 +135,62 @@ class Prepro(){
     }
 }
 
+class If(val condition: Node, val thenBlock: Node, val elseBlock: Node? = null,override val Value: Any = "") : Node {
+    override val children: List<Node> =
+        if (elseBlock != null) listOf(condition, thenBlock, elseBlock)
+        else listOf(condition, thenBlock)
+    
+    override fun evaluate(st: ST): Int? {
+        val cond = condition.evaluate(st)!!
+
+        return if (cond != 0) { // TRUE -> != 0
+            thenBlock.evaluate(st)
+        } else {
+            elseBlock?.evaluate(st)
+        }
+    }
+}
+
+class While(val condition: Node, val body: Node, override val Value: Any = "") : Node {
+    override val children: List<Node> = listOf(condition, body)
+
+    override fun evaluate(st: ST): Int? {
+
+        while (condition.evaluate(st)!! != 0) {
+            body.evaluate(st)
+        }
+
+        return null
+    }
+}
+
+class Read(override val Value: Any = "") : Node {
+    override val children: List<Node> = emptyList()
+
+    override fun evaluate(st: ST): Int {
+        return readLine()!!.toInt()
+    }
+}
+
 class Token(val type: String, val Value: Any){ //tipos validos: ASSIGN, END, PRINT ,MULT, DIV, OPEN_PAR, CLOSE_PAR, XOR, INT, PLUS, MINUS, EOF ex: (PLUS, '+')
 }                                                                                 
 
 class Lexer(val source: String, var position: Int = 0, var next: Token? = null){ //para iniciar o token como nulo ? = null
     
+    val keywords = mapOf(
+    "print" to "PRINT",
+    "and" to "AND",
+    "or" to "OR",
+    "not" to "NOT",
+    "if" to "IF",
+    "while" to "WHILE",
+    "else" to "ELSE",
+    "read" to "READ",
+    "then" to "OPEN_IF_BRA",
+    "do" to "OPEN_BRA",
+    "end" to "CLOSE_BRA"
+    )
+
     fun selectNext() {
         var numero = ""
         var letra = ""
@@ -182,14 +248,26 @@ class Lexer(val source: String, var position: Int = 0, var next: Token? = null){
             }
             next = Token("INT",numero.toInt())
             //numero = ""
+        } else if (char == '=' && position + 1 < source.length && source[position + 1] == '='){
+            next = Token("EQ","==")
+            position += 2
+        
         } else if (char == '='){
             next = Token("ASSIGN","=")
             position++
 
         } else if (char == '\n'){
             next = Token("END", "\n")
-            position ++
+            position++
+        
+        } else if (char == '>'){
+            next = Token("GT",">")
+            position++
 
+        } else if (char == '<'){
+            next = Token("LT","<")
+            position++
+          
         } else if (char.isLetter()){
             letra += char
             position++
@@ -199,10 +277,11 @@ class Lexer(val source: String, var position: Int = 0, var next: Token? = null){
                 position++
             }
 
-            if (letra == "print") {
-                next = Token("PRINT","print")
-            } else {next = Token("IDEN",letra)}
+            val tokenType = keywords[letra]
 
+            if (tokenType != null) {
+                next = Token(tokenType,letra)
+            } else {next = Token("IDEN",letra)}
         }
         else {
             throw Exception("[Lexer] Entrada invalida - char fora do alfabeto")
@@ -214,6 +293,8 @@ class Lexer(val source: String, var position: Int = 0, var next: Token? = null){
 
 class Parser(val lexer: Lexer){
 
+
+
     fun parseProgram(): Node {
 
         val statements = mutableListOf<Node>()
@@ -222,6 +303,17 @@ class Parser(val lexer: Lexer){
             statements.add(parseStatement())
         }
         
+        return Block(statements)
+
+    }
+
+    fun parseBlock(): Node {
+        val statements = mutableListOf<Node>()
+
+        while (lexer.next!!.type != "CLOSE_BRA" && lexer.next!!.type != "ELSE") {
+            statements.add(parseStatement())
+        }
+
         return Block(statements)
 
     }
@@ -239,7 +331,7 @@ class Parser(val lexer: Lexer){
             }
 
             lexer.selectNext()
-            val expr = parseExpression()
+            val expr = parseBoolExpression()
 
             if (lexer.next!!.type != "END") {
                 throw Exception("[Parser] Esperado fim de linha")
@@ -257,7 +349,7 @@ class Parser(val lexer: Lexer){
             }
 
             lexer.selectNext()
-            val expr = parseExpression()
+            val expr = parseBoolExpression()
 
             if (lexer.next!!.type != "CLOSE_PAR") {
                 throw Exception("[Parser] Esperado ')'")
@@ -279,9 +371,127 @@ class Parser(val lexer: Lexer){
             return NoOp()
         }
 
+        else if (cur.type == "IF") {
+            lexer.selectNext()
+
+            if (lexer.next!!.type != "OPEN_PAR") {
+                throw Exception("[Parser] Esperado '(' após IF")
+            }
+
+            lexer.selectNext()
+            val condition = parseBoolExpression() // trocar
+
+            if (lexer.next!!.type != "CLOSE_PAR") {
+                throw Exception("[Parser] Esperado ')'")
+            }
+
+            lexer.selectNext()
+
+            if (lexer.next!!.type != "OPEN_IF_BRA") {
+                throw Exception("[Parser] Esperado THEN")
+            }
+
+            lexer.selectNext()
+
+            val thenBlock = parseBlock()
+
+            var elseBlock: Node? = null
+
+            if (lexer.next!!.type == "ELSE") {
+                lexer.selectNext()
+                elseBlock = parseBlock()
+            }
+
+            if (lexer.next!!.type != "CLOSE_BRA") {
+                throw Exception("[Parser] Esperado END")
+            }
+
+            lexer.selectNext()
+
+            return If(condition, thenBlock, elseBlock)
+        }
+
+        else if (cur.type == "WHILE") {
+        lexer.selectNext()
+
+        if (lexer.next!!.type != "OPEN_PAR") {
+            throw Exception("[Parser] Esperado '(' após WHILE")
+        }
+
+        lexer.selectNext()
+        val condition = parseBoolExpression()
+
+        if (lexer.next!!.type != "CLOSE_PAR") {
+            throw Exception("[Parser] Esperado ')'")
+        }
+
+        lexer.selectNext()
+
+        if (lexer.next!!.type != "OPEN_BRA") { // DO
+            throw Exception("[Parser] Esperado DO")
+        }
+
+        lexer.selectNext()
+
+        val body = parseBlock()
+
+        if (lexer.next!!.type != "CLOSE_BRA") { // END
+            throw Exception("[Parser] Esperado END")
+        }
+
+        lexer.selectNext()
+
+        return While(condition, body)
+    }
+                
+
         throw Exception("[Parser] Statement invalido")
 
     }
+
+    fun parseBoolExpression(): Node {
+        var result = parseBoolTerm()
+
+        while (lexer.next!!.type == "OR") {
+            lexer.selectNext()
+            val right = parseBoolTerm()
+            result = BinOp('|', result, right)
+        }
+
+        return result
+    }
+
+    fun parseBoolTerm(): Node {
+        var result = parseRelExpression()
+
+        while (lexer.next!!.type == "AND") {
+            lexer.selectNext()
+            val right = parseRelExpression()
+            result = BinOp('&', result, right)
+        }
+
+        return result
+    }
+
+    fun parseRelExpression(): Node {
+        var result = parseExpression()
+
+        val cur = lexer.next!!
+
+        if (cur.type == "EQ" || cur.type == "GT" || cur.type == "LT") {
+            lexer.selectNext()
+            val right = parseExpression()
+
+            result = when (cur.type) {
+                "EQ" -> BinOp('=', result, right)
+                "GT" -> BinOp('>', result, right)
+                "LT" -> BinOp('<', result, right)
+                else -> throw Exception("Operador relacional inválido")
+            }
+        }
+
+        return result
+    }    
 
     fun parseExpression(): Node {
 
@@ -357,7 +567,7 @@ class Parser(val lexer: Lexer){
 
         } else if (factor.type == "OPEN_PAR"){
             lexer.selectNext()
-            val exp = parseExpression()
+            val exp = parseBoolExpression()
 
             val current = lexer.next ?: throw Exception("[Parser] parentesis nao fechado")
             if (current.type != "CLOSE_PAR"){
@@ -366,7 +576,28 @@ class Parser(val lexer: Lexer){
 
             lexer.selectNext()
             return exp
-        } 
+        
+        } else if (factor.type == "NOT") {
+            lexer.selectNext()
+            return UnOp('!', parseFactor())
+        
+        } else if (factor.type == "READ") {
+            lexer.selectNext()
+
+            if (lexer.next!!.type != "OPEN_PAR") {
+                throw Exception("Esperado ( após READ")
+            }
+
+            lexer.selectNext()
+
+            if (lexer.next!!.type != "CLOSE_PAR") {
+                throw Exception("Esperado )")
+            }
+
+            lexer.selectNext()
+
+            return Read()
+        }
 
         throw Exception("[Parser] Factor invalido")
 

@@ -370,6 +370,20 @@ class Parser(val lexer: Lexer){
             lexer.selectNext()
             return NoOp()
         }
+        
+        else if (cur.type == "OPEN_BRA") { // DO
+            lexer.selectNext()
+
+            val block = parseBlock()
+
+            if (lexer.next!!.type != "CLOSE_BRA") {
+                throw Exception("[Parser] Esperado END")
+            }
+
+            lexer.selectNext()
+
+            return block
+        }
 
         else if (cur.type == "IF") {
             lexer.selectNext()
@@ -585,13 +599,13 @@ class Parser(val lexer: Lexer){
             lexer.selectNext()
 
             if (lexer.next!!.type != "OPEN_PAR") {
-                throw Exception("Esperado ( após READ")
+                throw Exception("[Parser] Esperado ( apos READ")
             }
 
             lexer.selectNext()
 
             if (lexer.next!!.type != "CLOSE_PAR") {
-                throw Exception("Esperado )")
+                throw Exception("[Parser] Esperado )")
             }
 
             lexer.selectNext()

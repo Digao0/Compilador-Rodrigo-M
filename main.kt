@@ -1,4 +1,5 @@
 import java.io.File
+import kotlin.system.exitProcess
 
 interface Node {
     val Value: Any
@@ -463,20 +464,18 @@ class Parser(val lexer: Lexer) {
     }
 
     fun parseStatement(): Node {
-        return when (val current = lexer.next!!) {
-            is Token -> when (current.type) {
-                "BREAK" -> {
-                    lexer.selectNext()
-                    NoOp()
-                }
-                "VAR" -> parseVarDec()
-                "IDEN" -> parseAssignment()
-                "PRINT" -> parsePrint()
-                "DO" -> parseDoBlock()
-                "IF" -> parseIf()
-                "WHILE" -> parseWhile()
-                else -> throw Exception("[Parser] statement invalido")
+        val current = lexer.next!!
+        return when (current.type) {
+            "BREAK" -> {
+                lexer.selectNext()
+                NoOp()
             }
+            "VAR" -> parseVarDec()
+            "IDEN" -> parseAssignment()
+            "PRINT" -> parsePrint()
+            "DO" -> parseDoBlock()
+            "IF" -> parseIf()
+            "WHILE" -> parseWhile()
             else -> throw Exception("[Parser] statement invalido")
         }
     }
@@ -752,12 +751,17 @@ class Parser(val lexer: Lexer) {
 }
 
 fun main(args: Array<String>) {
-    if (args.isEmpty()) {
-        throw Exception("[Main] nenhum arquivo fornecido")
-    }
+    try {
+        if (args.isEmpty()) {
+            throw Exception("[Main] nenhum arquivo fornecido")
+        }
 
-    val source = File(args[0]).readText() + "\n"
-    val filtered = Prepro.filter(source)
-    val root = Parser(Lexer(filtered)).run()
-    root.evaluate(ST())
+        val source = File(args[0]).readText() + "\n"
+        val filtered = Prepro.filter(source)
+        val root = Parser(Lexer(filtered)).run()
+        root.evaluate(ST())
+    } catch (e: Exception) {
+        System.err.println(e.message ?: "[Error]")
+        exitProcess(1)
+    }
 }

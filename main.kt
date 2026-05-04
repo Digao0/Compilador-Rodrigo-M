@@ -1,15 +1,80 @@
 import java.io.File
 import kotlin.system.exitProcess
 
-interface Node {
-    val Value: Any
-    val children: List<Node>
-    fun evaluate(st: ST): Variable?
+object Code {
+    private val instructions = mutableListOf<String>()
+
+    fun reset() {
+        instructions.clear()
+    }
+
+    fun append(code: String) {
+        instructions.add(code)
+    }
+
+    fun dump(filename: String) {
+        val header = """
+            section .data
+              format_out: db "%d", 10, 0 ; format do printf
+              format_in: db "%d", 0 ; format do scanf
+              scan_int: dd 0; 32-bits integer
+
+            section .text
+              extern printf ; usar _printf para Windows
+              extern scanf ; usar _scanf para Windows
+              ; extern _ExitProcess@4 ; usar para Windows
+              global _start ; inicio do programa
+
+            _start:
+              push ebp ; guarda o EBP
+              mov ebp, esp ; zera a pilha
+
+              ; aqui comeca o codigo gerado:
+        """.trimIndent()
+
+        val footer = """
+
+              ; aqui termina o codigo gerado
+
+              mov esp, ebp ; reestabelece a pilha
+              pop ebp
+
+              ; chamada da interrupcao de saida (Linux)
+              mov eax, 1
+              xor ebx, ebx
+              int 0x80
+              ; Para Windows:
+              ; push dword 0
+              ; call _ExitProcess@4
+        """.trimIndent()
+
+        File(filename).writeText(header + "\n" + instructions.joinToString("\n") + "\n" + footer + "\n")
+    }
 }
 
-data class Variable(val value: Any, val type: String)
+abstract class Node {
+    val id: Int = newId()
+    abstract val Value: Any
+    abstract val children: List<Node>
+    abstract fun evaluate(st: ST): Variable?
+    abstract fun generate(st: ST): Variable?
 
-class ST(val table: MutableMap<String, Variable> = mutableMapOf()) {
+    companion object {
+        private var currentId = 0
+
+        fun newId(): Int {
+            currentId += 1
+            return currentId
+        }
+    }
+}
+
+data class Variable(val value: Any, val type: String, val shift: Int = 0)
+
+class ST(
+    val table: MutableMap<String, Variable> = mutableMapOf(),
+    private var nextShift: Int = 0
+) {
     fun getter(name: String): Variable =
         table[name] ?: throw Exception("[Semantic] simbolo '$name' nao foi declarado")
 
@@ -21,10 +86,10 @@ class ST(val table: MutableMap<String, Variable> = mutableMapOf()) {
                 "[Semantic] tipo incompativel para '$name': esperado '${existing.type}', recebido '${variable.type}'"
             )
         }
-        table[name] = variable
+        table[name] = variable.copy(shift = existing.shift)
     }
 
-    fun create_variable(name: String, type: String, initValue: Any? = null) {
+    fun create_variable(name: String, type: String, initValue: Any? = null): Variable {
         if (table.containsKey(name)) {
             throw Exception("[Semantic] variavel '$name' ja foi declarada")
         }
@@ -36,39 +101,65 @@ class ST(val table: MutableMap<String, Variable> = mutableMapOf()) {
             else -> throw Exception("[Semantic] tipo desconhecido: '$type'")
         }
 
-        table[name] = Variable(initValue ?: defaultValue, type)
+        nextShift += 4
+        val variable = Variable(initValue ?: defaultValue, type, nextShift)
+        table[name] = variable
+        return variable
     }
 }
 
-class IntVal(override val Value: Int) : Node {
+class IntVal(override val Value: Int) : Node() {
     override val children: List<Node> = emptyList()
 
     override fun evaluate(st: ST): Variable = Variable(Value, "number")
+
+    override fun generate(st: ST): Variable {
+        Code.append("  mov eax, $Value")
+        return Variable(Value, "number")
+    }
 }
 
-class BoolVal(override val Value: Boolean) : Node {
+class BoolVal(override val Value: Boolean) : Node() {
     override val children: List<Node> = emptyList()
 
     override fun evaluate(st: ST): Variable = Variable(Value, "boolean")
+
+    override fun generate(st: ST): Variable {
+        Code.append("  mov eax, ${if (Value) 1 else 0}")
+        return Variable(Value, "boolean")
+    }
 }
 
-class StringVal(override val Value: String) : Node {
+class StringVal(override val Value: String) : Node() {
     override val children: List<Node> = emptyList()
 
     override fun evaluate(st: ST): Variable = Variable(Value, "string")
+
+    override fun generate(st: ST): Variable {
+        throw Exception("[Codegen] strings nao possuem geracao de codigo")
+    }
 }
 
-class Identifier(override val Value: String) : Node {
+class Identifier(override val Value: String) : Node() {
     override val children: List<Node> = emptyList()
 
     override fun evaluate(st: ST): Variable = st.getter(Value as String)
+
+    override fun generate(st: ST): Variable {
+        val variable = st.getter(Value)
+        if (variable.type == "string") {
+            throw Exception("[Codegen] strings nao possuem geracao de codigo")
+        }
+        Code.append("  mov eax, [ebp-${variable.shift}] ; recupera $Value")
+        return variable
+    }
 }
 
 class VarDec(
     val identifier: Node,
     val expr: Node? = null,
     override val Value: Any
-) : Node {
+) : Node() {
     override val children: List<Node> =
         if (expr == null) listOf(identifier) else listOf(identifier, expr)
 
@@ -91,9 +182,37 @@ class VarDec(
         st.create_variable(name, type, result.value)
         return null
     }
+
+    override fun generate(st: ST): Variable? {
+        val name = identifier.Value as String
+        val type = Value as String
+        if (type == "string") {
+            throw Exception("[Codegen] strings nao possuem geracao de codigo")
+        }
+
+        if (expr == null) {
+            val variable = st.create_variable(name, type)
+            Code.append("  sub esp, 4 ; var $name $type [EBP-${variable.shift}]")
+            Code.append("  mov eax, 0")
+            Code.append("  mov [ebp-${variable.shift}], eax ; $name = 0")
+            return null
+        }
+
+        val result = expr.generate(st)!!
+        if (result.type != type) {
+            throw Exception(
+                "[Semantic] tipo incompativel na declaracao de '$name': esperado '$type', recebido '${result.type}'"
+            )
+        }
+
+        val variable = st.create_variable(name, type)
+        Code.append("  sub esp, 4 ; var $name $type [EBP-${variable.shift}]")
+        Code.append("  mov [ebp-${variable.shift}], eax ; $name = ${expr.Value}")
+        return null
+    }
 }
 
-class BinOp(override val Value: Char, val left: Node, val right: Node) : Node {
+class BinOp(override val Value: Char, val left: Node, val right: Node) : Node() {
     override val children: List<Node> = listOf(left, right)
 
     override fun evaluate(st: ST): Variable {
@@ -148,6 +267,86 @@ class BinOp(override val Value: Char, val left: Node, val right: Node) : Node {
         }
     }
 
+    override fun generate(st: ST): Variable {
+        if (Value == '.') {
+            throw Exception("[Codegen] concatenacao de strings nao possui geracao de codigo")
+        }
+
+        val r = right.generate(st)!!
+        Code.append("  push eax")
+        val l = left.generate(st)!!
+        Code.append("  pop ecx")
+
+        return when (Value) {
+            '+' -> {
+                requireType(l, "number", "+")
+                requireType(r, "number", "+")
+                Code.append("  add eax, ecx")
+                Variable(0, "number")
+            }
+            '-' -> {
+                requireType(l, "number", "-")
+                requireType(r, "number", "-")
+                Code.append("  sub eax, ecx")
+                Variable(0, "number")
+            }
+            '*' -> {
+                requireType(l, "number", "*")
+                requireType(r, "number", "*")
+                Code.append("  imul ecx")
+                Variable(0, "number")
+            }
+            '/' -> {
+                requireType(l, "number", "/")
+                requireType(r, "number", "/")
+                Code.append("  cdq")
+                Code.append("  idiv ecx")
+                Variable(0, "number")
+            }
+            '<' -> {
+                requireType(l, "number", "<")
+                requireType(r, "number", "<")
+                Code.append("  cmp eax, ecx")
+                Code.append("  mov eax, 0")
+                Code.append("  mov ecx, 1")
+                Code.append("  cmovl eax, ecx")
+                Variable(false, "boolean")
+            }
+            '>' -> {
+                requireType(l, "number", ">")
+                requireType(r, "number", ">")
+                Code.append("  cmp eax, ecx")
+                Code.append("  mov eax, 0")
+                Code.append("  mov ecx, 1")
+                Code.append("  cmovg eax, ecx")
+                Variable(false, "boolean")
+            }
+            '=' -> {
+                if (l.type != r.type || l.type == "string") {
+                    throw Exception("[Semantic] '==' requer operandos do mesmo tipo")
+                }
+                Code.append("  cmp eax, ecx")
+                Code.append("  mov eax, 0")
+                Code.append("  mov ecx, 1")
+                Code.append("  cmove eax, ecx")
+                Variable(false, "boolean")
+            }
+            '&' -> {
+                requireType(l, "boolean", "and")
+                requireType(r, "boolean", "and")
+                Code.append("  and eax, ecx")
+                Variable(false, "boolean")
+            }
+            '|' -> {
+                requireType(l, "boolean", "or")
+                requireType(r, "boolean", "or")
+                Code.append("  or eax, ecx")
+                Variable(false, "boolean")
+            }
+            else -> throw Exception("[Semantic] operador desconhecido '$Value'")
+        }
+    }
+
     private fun requireType(variable: Variable, expected: String, op: String) {
         if (variable.type != expected) {
             throw Exception("[Semantic] '$op' requer operando do tipo '$expected'")
@@ -173,7 +372,7 @@ class BinOp(override val Value: Char, val left: Node, val right: Node) : Node {
         }
 }
 
-class UnOp(override val Value: Char, val child: Node) : Node {
+class UnOp(override val Value: Char, val child: Node) : Node() {
     override val children: List<Node> = listOf(child)
 
     override fun evaluate(st: ST): Variable {
@@ -201,18 +400,61 @@ class UnOp(override val Value: Char, val child: Node) : Node {
             else -> throw Exception("[Semantic] operador unario desconhecido '$Value'")
         }
     }
+
+    override fun generate(st: ST): Variable {
+        val result = child.generate(st)!!
+
+        return when (Value) {
+            '+' -> {
+                if (result.type != "number") {
+                    throw Exception("[Semantic] unario '+' requer number")
+                }
+                result
+            }
+            '-' -> {
+                if (result.type != "number") {
+                    throw Exception("[Semantic] unario '-' requer number")
+                }
+                Code.append("  neg eax")
+                Variable(0, "number")
+            }
+            '!' -> {
+                if (result.type != "boolean") {
+                    throw Exception("[Semantic] 'not' requer boolean")
+                }
+                Code.append("  cmp eax, 0")
+                Code.append("  mov eax, 0")
+                Code.append("  mov ecx, 1")
+                Code.append("  cmove eax, ecx")
+                Variable(false, "boolean")
+            }
+            else -> throw Exception("[Semantic] operador unario desconhecido '$Value'")
+        }
+    }
 }
 
-class Print(val child: Node, override val Value: Any = "") : Node {
+class Print(val child: Node, override val Value: Any = "") : Node() {
     override val children: List<Node> = listOf(child)
 
     override fun evaluate(st: ST): Variable? {
         println(child.evaluate(st)!!.value)
         return null
     }
+
+    override fun generate(st: ST): Variable? {
+        val result = child.generate(st)!!
+        if (result.type == "string") {
+            throw Exception("[Codegen] strings nao possuem geracao de codigo")
+        }
+        Code.append("  push eax")
+        Code.append("  push format_out")
+        Code.append("  call printf")
+        Code.append("  add esp, 8")
+        return null
+    }
 }
 
-class Assignment(val left: Node, val right: Node, override val Value: Any = "") : Node {
+class Assignment(val left: Node, val right: Node, override val Value: Any = "") : Node() {
     override val children: List<Node> = listOf(left, right)
 
     override fun evaluate(st: ST): Variable? {
@@ -221,24 +463,51 @@ class Assignment(val left: Node, val right: Node, override val Value: Any = "") 
         st.setter(name, result)
         return null
     }
+
+    override fun generate(st: ST): Variable? {
+        val name = left.Value as String
+        val variable = st.getter(name)
+        if (variable.type == "string") {
+            throw Exception("[Codegen] strings nao possuem geracao de codigo")
+        }
+
+        val result = right.generate(st)!!
+        if (result.type != variable.type) {
+            throw Exception(
+                "[Semantic] tipo incompativel para '$name': esperado '${variable.type}', recebido '${result.type}'"
+            )
+        }
+
+        Code.append("  mov [ebp-${variable.shift}], eax ; $name = ${right.Value}")
+        return null
+    }
 }
 
 class Block(
     override val children: List<Node> = emptyList(),
     override val Value: Any = ""
-) : Node {
+) : Node() {
     override fun evaluate(st: ST): Variable? {
         for (child in children) {
             child.evaluate(st)
         }
         return null
     }
+
+    override fun generate(st: ST): Variable? {
+        for (child in children) {
+            child.generate(st)
+        }
+        return null
+    }
 }
 
-class NoOp(override val Value: Any = "") : Node {
+class NoOp(override val Value: Any = "") : Node() {
     override val children: List<Node> = emptyList()
 
     override fun evaluate(st: ST): Variable? = null
+
+    override fun generate(st: ST): Variable? = null
 }
 
 class If(
@@ -246,7 +515,7 @@ class If(
     val thenBlock: Node,
     val elseBlock: Node? = null,
     override val Value: Any = ""
-) : Node {
+) : Node() {
     override val children: List<Node> =
         if (elseBlock == null) listOf(condition, thenBlock) else listOf(condition, thenBlock, elseBlock)
 
@@ -262,9 +531,33 @@ class If(
             elseBlock?.evaluate(st)
         }
     }
+
+    override fun generate(st: ST): Variable? {
+        val result = condition.generate(st)!!
+        if (result.type != "boolean") {
+            throw Exception("[Semantic] condicao do if deve ser boolean")
+        }
+
+        val elseNode = elseBlock
+        Code.append("  cmp eax, 0")
+        if (elseNode == null) {
+            Code.append("  je exit_$id")
+            thenBlock.generate(st)
+            Code.append("exit_$id:")
+            return null
+        }
+
+        Code.append("  je else_$id")
+        thenBlock.generate(st)
+        Code.append("  jmp exit_$id")
+        Code.append("else_$id:")
+        elseNode.generate(st)
+        Code.append("exit_$id:")
+        return null
+    }
 }
 
-class While(val condition: Node, val body: Node, override val Value: Any = "") : Node {
+class While(val condition: Node, val body: Node, override val Value: Any = "") : Node() {
     override val children: List<Node> = listOf(condition, body)
 
     override fun evaluate(st: ST): Variable? {
@@ -283,9 +576,24 @@ class While(val condition: Node, val body: Node, override val Value: Any = "") :
 
         return null
     }
+
+    override fun generate(st: ST): Variable? {
+        Code.append("loop_$id:")
+        val result = condition.generate(st)!!
+        if (result.type != "boolean") {
+            throw Exception("[Semantic] condicao do while deve ser boolean")
+        }
+
+        Code.append("  cmp eax, 0")
+        Code.append("  je exit_$id")
+        body.generate(st)
+        Code.append("  jmp loop_$id")
+        Code.append("exit_$id:")
+        return null
+    }
 }
 
-class Read(override val Value: Any = "") : Node {
+class Read(override val Value: Any = "") : Node() {
     override val children: List<Node> = emptyList()
 
     override fun evaluate(st: ST): Variable {
@@ -295,6 +603,15 @@ class Read(override val Value: Any = "") : Node {
         } catch (_: NumberFormatException) {
             Variable(input, "string")
         }
+    }
+
+    override fun generate(st: ST): Variable {
+        Code.append("  push scan_int")
+        Code.append("  push format_in")
+        Code.append("  call scanf")
+        Code.append("  add esp, 8")
+        Code.append("  mov eax, dword [scan_int]")
+        return Variable(0, "number")
     }
 }
 
@@ -756,10 +1073,15 @@ fun main(args: Array<String>) {
             throw Exception("[Main] nenhum arquivo fornecido")
         }
 
-        val source = File(args[0]).readText() + "\n"
+        val inputFile = File(args[0])
+        val source = inputFile.readText() + "\n"
         val filtered = Prepro.filter(source)
         val root = Parser(Lexer(filtered)).run()
-        root.evaluate(ST())
+        val outputFile = File(inputFile.parentFile ?: File("."), inputFile.nameWithoutExtension + ".asm")
+
+        Code.reset()
+        root.generate(ST())
+        Code.dump(outputFile.path)
     } catch (e: Exception) {
         System.err.println(e.message ?: "[Error]")
         exitProcess(1)

@@ -69,27 +69,45 @@ abstract class Node {
     }
 }
 
-data class Variable(val value: Any, val type: String, val shift: Int = 0)
+data class Variable(val value: Any, val type: String, val shift: Int = 0, val isFunction: Boolean = false)
 
 class ST(
     val table: MutableMap<String, Variable> = mutableMapOf(),
-    private var nextShift: Int = 0
+    private var nextShift: Int = 0,
+    val parent: ST? = null
 ) {
-    fun getter(name: String): Variable =
-        table[name] ?: throw Exception("[Semantic] simbolo '$name' nao foi declarado")
+    fun getter(name: String): Variable {
+        val variable = table[name]
+        if (variable != null) {
+            return variable
+        }
+        // Busca recursiva no parent se não encontrar localmente
+        if (parent != null) {
+            return parent.getter(name)
+        }
+        throw Exception("[Semantic] simbolo '$name' nao foi declarado")
+    }
 
     fun setter(name: String, variable: Variable) {
         val existing = table[name]
-            ?: throw Exception("[Semantic] variavel '$name' nao foi declarada")
-        if (existing.type != variable.type) {
-            throw Exception(
-                "[Semantic] tipo incompativel para '$name': esperado '${existing.type}', recebido '${variable.type}'"
-            )
+        if (existing != null) {
+            if (existing.type != variable.type) {
+                throw Exception(
+                    "[Semantic] tipo incompativel para '$name': esperado '${existing.type}', recebido '${variable.type}'"
+                )
+            }
+            table[name] = variable.copy(shift = existing.shift)
+            return
         }
-        table[name] = variable.copy(shift = existing.shift)
+        // Se não encontrar localmente, tenta no parent
+        if (parent != null) {
+            parent.setter(name, variable)
+            return
+        }
+        throw Exception("[Semantic] variavel '$name' nao foi declarada")
     }
 
-    fun create_variable(name: String, type: String, initValue: Any? = null): Variable {
+    fun create_variable(name: String, type: String, initValue: Any? = null, isFunction: Boolean = false): Variable {
         if (table.containsKey(name)) {
             throw Exception("[Semantic] variavel '$name' ja foi declarada")
         }
@@ -102,7 +120,7 @@ class ST(
         }
 
         nextShift += 4
-        val variable = Variable(initValue ?: defaultValue, type, nextShift)
+        val variable = Variable(initValue ?: defaultValue, type, nextShift, isFunction)
         table[name] = variable
         return variable
     }
@@ -191,7 +209,7 @@ class VarDec(
         }
 
         if (expr == null) {
-            val variable = st.create_variable(name, type)
+            val variable = st.create_variable(name, type, isFunction = false)
             Code.append("  sub esp, 4 ; var $name $type [EBP-${variable.shift}]")
             Code.append("  mov eax, 0")
             Code.append("  mov [ebp-${variable.shift}], eax ; $name = 0")
@@ -205,7 +223,7 @@ class VarDec(
             )
         }
 
-        val variable = st.create_variable(name, type)
+        val variable = st.create_variable(name, type, isFunction = false)
         Code.append("  sub esp, 4 ; var $name $type [EBP-${variable.shift}]")
         Code.append("  mov [ebp-${variable.shift}], eax ; $name = ${expr.Value}")
         return null
@@ -489,14 +507,34 @@ class Block(
 ) : Node() {
     override fun evaluate(st: ST): Variable? {
         for (child in children) {
-            child.evaluate(st)
+            // Se o filho é um Block, criar uma nova SymbolTable encadeada
+            val result = if (child is Block) {
+                val newST = ST(parent = st)
+                child.evaluate(newST)
+            } else {
+                child.evaluate(st)
+            }
+            
+            // Se o resultado é um Return, propagar o valor
+            if (result != null) {
+                return result
+            }
         }
         return null
     }
 
     override fun generate(st: ST): Variable? {
         for (child in children) {
-            child.generate(st)
+            val result = if (child is Block) {
+                val newST = ST(parent = st)
+                child.generate(newST)
+            } else {
+                child.generate(st)
+            }
+            
+            if (result != null) {
+                return result
+            }
         }
         return null
     }
@@ -567,7 +605,10 @@ class While(val condition: Node, val body: Node, override val Value: Any = "") :
         }
 
         while (result.value as Boolean) {
-            body.evaluate(st)
+            val bodyResult = body.evaluate(st)
+            if (bodyResult != null) {
+                return bodyResult
+            }
             result = condition.evaluate(st)!!
             if (result.type != "boolean") {
                 throw Exception("[Semantic] condicao do while deve ser boolean")
@@ -615,6 +656,97 @@ class Read(override val Value: Any = "") : Node() {
     }
 }
 
+class Return(val child: Node, override val Value: Any = "") : Node() {
+    override val children: List<Node> = listOf(child)
+
+    override fun evaluate(st: ST): Variable? {
+        return child.evaluate(st)
+    }
+
+    override fun generate(st: ST): Variable? {
+        return child.generate(st)
+    }
+}
+
+class FuncDec(
+    val identifier: Node,
+    val args: List<Node>,
+    val body: Node,
+    override val Value: Any = ""
+) : Node() {
+    override val children: List<Node> =
+        listOf(identifier) + args + listOf(body)
+
+    override fun evaluate(st: ST): Variable? {
+        val name = identifier.Value as String
+        // Armazenar a referência do nó FuncDec na SymbolTable
+        val funcVar = Variable(this, Value as String, isFunction = true)
+        st.table[name] = funcVar
+        return null
+    }
+
+    override fun generate(st: ST): Variable? {
+        // Code generation para funções será implementado depois
+        return null
+    }
+}
+
+class FuncCall(
+    val identifier: Node,
+    val args: List<Node> = emptyList(),
+    override val Value: Any = ""
+) : Node() {
+    override val children: List<Node> = listOf(identifier) + args
+
+    override fun evaluate(st: ST): Variable? {
+        val name = identifier.Value as String
+        val funcVar = st.getter(name)
+        
+        // Verificar se é uma função
+        if (!funcVar.isFunction) {
+            throw Exception("[Semantic] '$name' nao eh uma funcao")
+        }
+        
+        val funcDec = funcVar.value as FuncDec
+        
+        // Verificar número de argumentos
+        if (funcDec.args.size != args.size) {
+            throw Exception("[Semantic] numero de argumentos incorreto para '$name': esperado ${funcDec.args.size}, recebido ${args.size}")
+        }
+        
+        // Criar nova SymbolTable encadeada
+        val newST = ST(parent = st)
+        
+        // Declarar argumentos e atribuir valores
+        for (i in funcDec.args.indices) {
+            val paramNode = funcDec.args[i] as VarDec
+            val paramName = paramNode.identifier.Value as String
+            val paramType = paramNode.Value as String
+            
+            // Avaliar argumento na SymbolTable original
+            val argValue = args[i].evaluate(st)!!
+            
+            // Verificar tipo
+            if (argValue.type != paramType) {
+                throw Exception(
+                    "[Semantic] tipo incompativel para argumento '$paramName': esperado '$paramType', recebido '${argValue.type}'"
+                )
+            }
+            
+            // Criar variável na nova SymbolTable
+            newST.create_variable(paramName, paramType, argValue.value)
+        }
+        
+        // Executar o corpo da função
+        return funcDec.body.evaluate(newST)
+    }
+
+    override fun generate(st: ST): Variable? {
+        // Code generation para chamadas de função será implementado depois
+        return null
+    }
+}
+
 class Prepro {
     companion object {
         fun filter(source: String): String = source.replace(Regex("--.*"), "")
@@ -641,7 +773,9 @@ class Lexer(val source: String, var position: Int = 0, var next: Token? = null) 
         "false" to "BOOL",
         "string" to "TYPE",
         "number" to "TYPE",
-        "boolean" to "TYPE"
+        "boolean" to "TYPE",
+        "function" to "FUNC",
+        "return" to "RETURN"
     )
 
     fun selectNext() {
@@ -682,6 +816,10 @@ class Lexer(val source: String, var position: Int = 0, var next: Token? = null) 
             }
             char == ')' -> {
                 next = Token("CLOSE_PAR", ')')
+                position++
+            }
+            char == ',' -> {
+                next = Token("COMMA", ',')
                 position++
             }
             char == '.' && position + 1 < source.length && source[position + 1] == '.' -> {
@@ -767,9 +905,78 @@ class Parser(val lexer: Lexer) {
     fun parseProgram(): Node {
         val statements = mutableListOf<Node>()
         while (lexer.next!!.type != "EOF") {
-            statements.add(parseStatement())
+            when (lexer.next!!.type) {
+                "FUNC" -> statements.add(parseFuncDeclaration())
+                else -> statements.add(parseStatement())
+            }
         }
         return Block(statements)
+    }
+
+    private fun parseFuncDeclaration(): Node {
+        lexer.selectNext() // consome 'function'
+        
+        if (lexer.next!!.type != "IDEN") {
+            throw Exception("[Parser] esperado identificador apos 'function'")
+        }
+        val identifier = Identifier(lexer.next!!.Value as String)
+        lexer.selectNext()
+
+        if (lexer.next!!.type != "OPEN_PAR") {
+            throw Exception("[Parser] esperado '(' apos nome da funcao")
+        }
+        lexer.selectNext()
+
+        // Parse argumentos
+        val args = mutableListOf<Node>()
+        if (lexer.next!!.type != "CLOSE_PAR") {
+            do {
+                if (lexer.next!!.type != "IDEN") {
+                    throw Exception("[Parser] esperado identificador nos argumentos")
+                }
+                val argName = Identifier(lexer.next!!.Value as String)
+                lexer.selectNext()
+
+                if (lexer.next!!.type != "TYPE") {
+                    throw Exception("[Parser] esperado tipo para argumento")
+                }
+                val argType = lexer.next!!.Value as String
+                lexer.selectNext()
+
+                args.add(VarDec(argName, null, argType))
+
+                if (lexer.next!!.type == "COMMA") {
+                    lexer.selectNext()
+                }
+            } while (lexer.next!!.type != "CLOSE_PAR")
+        }
+
+        if (lexer.next!!.type != "CLOSE_PAR") {
+            throw Exception("[Parser] esperado ')'")
+        }
+        lexer.selectNext()
+
+        // Parse tipo de retorno (opcional)
+        var returnType: String? = null
+        if (lexer.next!!.type == "TYPE") {
+            returnType = lexer.next!!.Value as String
+            lexer.selectNext()
+        }
+
+        if (lexer.next!!.type != "BREAK") {
+            throw Exception("[Parser] esperado nova linha apos assinatura da funcao")
+        }
+        lexer.selectNext()
+
+        // Parse corpo da função
+        val body = parseBlock()
+
+        if (lexer.next!!.type != "END_BLOCK") {
+            throw Exception("[Parser] esperado 'end'")
+        }
+        lexer.selectNext()
+
+        return FuncDec(identifier, args, body, returnType ?: "void")
     }
 
     fun parseBlock(): Node {
@@ -790,6 +997,7 @@ class Parser(val lexer: Lexer) {
             "VAR" -> parseVarDec()
             "IDEN" -> parseAssignment()
             "PRINT" -> parsePrint()
+            "RETURN" -> parseReturn()
             "DO" -> parseDoBlock()
             "IF" -> parseIf()
             "WHILE" -> parseWhile()
@@ -829,18 +1037,46 @@ class Parser(val lexer: Lexer) {
         val identifier = Identifier(lexer.next!!.Value as String)
         lexer.selectNext()
 
-        if (lexer.next!!.type != "ASSIGN") {
-            throw Exception("[Parser] esperado '=' apos identificador")
+        return when (lexer.next!!.type) {
+            "ASSIGN" -> {
+                // Atribuição
+                lexer.selectNext()
+                val expr = parseBoolExpression()
+                if (lexer.next!!.type != "BREAK") {
+                    throw Exception("[Parser] esperado fim de linha")
+                }
+                lexer.selectNext()
+                Assignment(identifier, expr)
+            }
+            "OPEN_PAR" -> {
+                // Chamada de função
+                lexer.selectNext()
+                val args = parseFunctionArguments()
+                if (lexer.next!!.type != "CLOSE_PAR") {
+                    throw Exception("[Parser] esperado ')'")
+                }
+                lexer.selectNext()
+                if (lexer.next!!.type != "BREAK") {
+                    throw Exception("[Parser] esperado fim de linha apos chamada de funcao")
+                }
+                lexer.selectNext()
+                FuncCall(identifier, args)
+            }
+            else -> throw Exception("[Parser] esperado '=' ou '(' apos identificador")
         }
-        lexer.selectNext()
+    }
 
-        val expr = parseBoolExpression()
-        if (lexer.next!!.type != "BREAK") {
-            throw Exception("[Parser] esperado fim de linha")
+    private fun parseFunctionArguments(): List<Node> {
+        val args = mutableListOf<Node>()
+        if (lexer.next!!.type != "CLOSE_PAR") {
+            do {
+                args.add(parseBoolExpression())
+                if (lexer.next!!.type == "COMMA") {
+                    lexer.selectNext()
+                }
+            } while (lexer.next!!.type != "CLOSE_PAR")
         }
-        lexer.selectNext()
-
-        return Assignment(identifier, expr)
+        return args
     }
 
     private fun parsePrint(): Node {
@@ -863,6 +1099,19 @@ class Parser(val lexer: Lexer) {
         lexer.selectNext()
 
         return Print(expr)
+    }
+
+    private fun parseReturn(): Node {
+        lexer.selectNext() // consome 'return'
+        
+        val expr = parseBoolExpression()
+        
+        if (lexer.next!!.type != "BREAK") {
+            throw Exception("[Parser] esperado fim de linha apos return")
+        }
+        lexer.selectNext()
+
+        return Return(expr)
     }
 
     private fun parseDoBlock(): Node {
@@ -1026,8 +1275,21 @@ class Parser(val lexer: Lexer) {
                 StringVal(current.Value as String)
             }
             "IDEN" -> {
+                val identifier = Identifier(current.Value as String)
                 lexer.selectNext()
-                Identifier(current.Value as String)
+                
+                // Verificar se é uma chamada de função
+                if (lexer.next!!.type == "OPEN_PAR") {
+                    lexer.selectNext()
+                    val args = parseFunctionArguments()
+                    if (lexer.next!!.type != "CLOSE_PAR") {
+                        throw Exception("[Parser] esperado ')'")
+                    }
+                    lexer.selectNext()
+                    FuncCall(identifier, args)
+                } else {
+                    identifier
+                }
             }
             "PLUS" -> {
                 lexer.selectNext()

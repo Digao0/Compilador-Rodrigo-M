@@ -1335,15 +1335,34 @@ fun main(args: Array<String>) {
             throw Exception("[Main] nenhum arquivo fornecido")
         }
 
-        val inputFile = File(args[0])
+        var inputFile: File
+        var compileMode = false
+        
+        // Parse arguments
+        if (args[0] == "-c" || args[0] == "-compile") {
+            if (args.size < 2) {
+                throw Exception("[Main] nenhum arquivo fornecido")
+            }
+            compileMode = true
+            inputFile = File(args[1])
+        } else {
+            inputFile = File(args[0])
+        }
+
         val source = inputFile.readText() + "\n"
         val filtered = Prepro.filter(source)
         val root = Parser(Lexer(filtered)).run()
-        val outputFile = File(inputFile.parentFile ?: File("."), inputFile.nameWithoutExtension + ".asm")
 
-        Code.reset()
-        root.generate(ST())
-        Code.dump(outputFile.path)
+        if (compileMode) {
+            // Modo compilação: gera código assembly
+            val outputFile = File(inputFile.parentFile ?: File("."), inputFile.nameWithoutExtension + ".asm")
+            Code.reset()
+            root.generate(ST())
+            Code.dump(outputFile.path)
+        } else {
+            // Modo interpretação: executa o programa
+            root.evaluate(ST())
+        }
     } catch (e: Exception) {
         System.err.println(e.message ?: "[Error]")
         exitProcess(1)

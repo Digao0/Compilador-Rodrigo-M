@@ -1,0 +1,10 @@
+-- Teste rápido de erros
+
+function main()
+  local x number = 1
+  print(x)
+  -- Teste divisão por zero
+  local y number = 1 / 0
+end
+
+main()

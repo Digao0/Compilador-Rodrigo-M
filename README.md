@@ -49,7 +49,6 @@ DIGIT = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
 LETTER = "a" | ... | "z" | "A" | ... | "Z" ;
 ```
 
-
 How the server will run your program:
 `kotlinc -script main.kts [arguments]`
 

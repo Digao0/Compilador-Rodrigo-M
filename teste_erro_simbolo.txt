@@ -1,0 +1,10 @@
+-- Teste de símbolo não declarado
+
+function main()
+  local x number = 1
+  print(x)
+  -- Tenta usar variável não declarada
+  print(Y)
+end
+
+main()

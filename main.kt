@@ -738,7 +738,20 @@ class FuncCall(
         }
         
         // Executar o corpo da função
-        return funcDec.body.evaluate(newST)
+        val result = funcDec.body.evaluate(newST)
+
+        // Verificar tipo de retorno declarado
+        val declaredReturnType = funcVar.type
+        if (declaredReturnType != "void") {
+            if (result == null) {
+                throw Exception("[Semantic] funcao '$name' deve retornar '$declaredReturnType'")
+            }
+            if (result.type != declaredReturnType) {
+                throw Exception("[Semantic] tipo de retorno incorreto para '$name': esperado '$declaredReturnType', recebido '${result.type}'")
+            }
+        }
+
+        return result
     }
 
     override fun generate(st: ST): Variable? {
@@ -944,9 +957,12 @@ class Parser(val lexer: Lexer) {
                 lexer.selectNext()
 
                 args.add(VarDec(argName, null, argType))
-
                 if (lexer.next!!.type == "COMMA") {
+                    // consome a vírgula e garante que não seja uma vírgula final
                     lexer.selectNext()
+                    if (lexer.next!!.type == "CLOSE_PAR") {
+                        throw Exception("[Parser] esperado identificador apos ','")
+                    }
                 }
             } while (lexer.next!!.type != "CLOSE_PAR")
         }
@@ -1072,7 +1088,11 @@ class Parser(val lexer: Lexer) {
             do {
                 args.add(parseBoolExpression())
                 if (lexer.next!!.type == "COMMA") {
+                    // consome vírgula e garante que não haja vírgula final
                     lexer.selectNext()
+                    if (lexer.next!!.type == "CLOSE_PAR") {
+                        throw Exception("[Parser] esperado expressão apos ','")
+                    }
                 }
             } while (lexer.next!!.type != "CLOSE_PAR")
         }

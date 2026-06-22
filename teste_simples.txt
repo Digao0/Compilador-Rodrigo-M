@@ -1,9 +1,0 @@
--- Teste simples funcionando
-
-function main()
-  print(2)
-  print(24)
-  print(7)
-end
-
-main()

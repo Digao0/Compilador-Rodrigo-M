@@ -1,6 +1,6 @@
 # Compilador-Rodrigo-M
 
-[![Compilation Status](https://compiler-tester.insper-comp.com.br/svg/Digao0/Compilador-Rodrigo-M)](https://compiler-tester.insper-comp.com.br/svg/Digao0/Compilador-Rodrigo-M)
+
 
 Projeto de compilador desenvolvido para a matéria de **Lógica Computacional**, implementado em Kotlin. O compilador suporta dois modos de operação: **interpretação** (execução direta do código-fonte) e **compilação** (geração de código assembly NASM para Linux x86 32-bit).
 
